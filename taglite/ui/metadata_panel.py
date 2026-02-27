@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -16,7 +17,13 @@ from PySide6.QtWidgets import (
 )
 
 from taglite.core.library import get_library
-from taglite.core.tagger import get_file_tags, parse_tag_input, untag_file, update_tag
+from taglite.core.tagger import (
+    get_file_tags,
+    parse_tag_input,
+    untag_file,
+    untag_files_recursive,
+    update_tag,
+)
 from taglite.db.engine import session_scope
 from taglite.db.models import File
 from taglite.ui.flow_layout import FlowLayout
@@ -48,6 +55,9 @@ class MetadataPanel(QWidget):
         super().__init__(parent)
         self._db_uri = db_uri
         self._current_file_id: int | None = None
+        self._current_is_directory: bool = False
+        self._current_library_id: int | None = None
+        self._current_rel_path: str = ""
         self.setObjectName("metaPanel")
         self.setMinimumWidth(240)
 
@@ -125,6 +135,10 @@ class MetadataPanel(QWidget):
             is_dir = f.is_directory
             lib_id = f.library_id
 
+        self._current_is_directory = is_dir
+        self._current_library_id = lib_id
+        self._current_rel_path = rel_path
+
         lib = get_library(self._db_uri, lib_id)
         tags = get_file_tags(self._db_uri, file_id)
 
@@ -199,7 +213,28 @@ class MetadataPanel(QWidget):
     def _remove_tag(self, tag_id: int) -> None:
         if self._current_file_id is None:
             return
-        untag_file(self._db_uri, self._current_file_id, tag_id)
+
+        if self._current_is_directory:
+            reply = QMessageBox.question(
+                self,
+                "移除标签",
+                "要同时移除此文件夹内所有内容的该标签吗？",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if reply == QMessageBox.Cancel:
+                return
+            if reply == QMessageBox.Yes:
+                untag_files_recursive(
+                    self._db_uri,
+                    self._current_library_id,
+                    self._current_rel_path,
+                    tag_id,
+                )
+            else:
+                untag_file(self._db_uri, self._current_file_id, tag_id)
+        else:
+            untag_file(self._db_uri, self._current_file_id, tag_id)
+
         self._render()
         self.tags_changed.emit()
 

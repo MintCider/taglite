@@ -23,9 +23,13 @@ from taglite.core.tagger import (
     list_tags,
     parse_tag_input,
     tag_file,
+    tag_files_recursive,
     untag_file,
+    untag_files_recursive,
     update_tag,
 )
+from taglite.db.engine import session_scope
+from taglite.db.models import File
 from taglite.ui.color_picker import PRESET_COLORS, ColorPicker
 from taglite.ui.flow_layout import FlowLayout
 from taglite.ui.tag_chip import TagChipFrame
@@ -46,6 +50,12 @@ class TagDialog(QDialog):
         self._library_id = library_id
         self._file_id = file_id
         self._applied = False
+
+        # Detect if target is a directory (for recursive tag prompts)
+        with session_scope(db_uri) as session:
+            f = session.get(File, file_id)
+            self._is_directory = f.is_directory if f else False
+            self._rel_path = f.relative_path if f else ""
 
         self.setWindowTitle("管理标签")
         self.setMinimumSize(420, 480)
@@ -171,20 +181,64 @@ class TagDialog(QDialog):
         if color is None:
             color = self._auto_assign_color()
         tag = get_or_create_tag(self._db_uri, self._library_id, key, value, color=color)
-        tag_file(self._db_uri, self._file_id, tag.id)
-        self._applied = True
+        if not self._do_tag(tag.id):
+            return
         self._input.clear()
         self._reload()
 
     def _apply_tag(self, tag_id: int) -> None:
-        tag_file(self._db_uri, self._file_id, tag_id)
-        self._applied = True
+        if not self._do_tag(tag_id):
+            return
         self._reload()
 
     def _remove_from_file(self, tag_id: int) -> None:
-        untag_file(self._db_uri, self._file_id, tag_id)
-        self._applied = True
+        if not self._do_untag(tag_id):
+            return
         self._reload()
+
+    def _do_tag(self, tag_id: int) -> bool:
+        """Tag the file (with recursive prompt for directories). Returns False if cancelled."""
+        if self._is_directory:
+            reply = QMessageBox.question(
+                self,
+                "添加标签",
+                "要同时为此文件夹内所有内容添加该标签吗？",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if reply == QMessageBox.Cancel:
+                return False
+            if reply == QMessageBox.Yes:
+                tag_files_recursive(
+                    self._db_uri, self._library_id, self._rel_path, tag_id
+                )
+            else:
+                tag_file(self._db_uri, self._file_id, tag_id)
+        else:
+            tag_file(self._db_uri, self._file_id, tag_id)
+        self._applied = True
+        return True
+
+    def _do_untag(self, tag_id: int) -> bool:
+        """Untag the file (with recursive prompt for directories). Returns False if cancelled."""
+        if self._is_directory:
+            reply = QMessageBox.question(
+                self,
+                "移除标签",
+                "要同时移除此文件夹内所有内容的该标签吗？",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            )
+            if reply == QMessageBox.Cancel:
+                return False
+            if reply == QMessageBox.Yes:
+                untag_files_recursive(
+                    self._db_uri, self._library_id, self._rel_path, tag_id
+                )
+            else:
+                untag_file(self._db_uri, self._file_id, tag_id)
+        else:
+            untag_file(self._db_uri, self._file_id, tag_id)
+        self._applied = True
+        return True
 
     def _delete_lib_tag(self, tag_id: int) -> None:
         reply = QMessageBox.question(

@@ -47,6 +47,7 @@ class TagChipFrame(QFrame):
         self._clickable = clickable
         self._removable = removable
         self._hovered = False
+        self._selected = False
 
         # Transparent background — we paint it ourselves
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -70,6 +71,10 @@ class TagChipFrame(QFrame):
         if clickable or removable:
             self.setCursor(Qt.PointingHandCursor)
 
+    def set_selected(self, selected: bool) -> None:
+        self._selected = selected
+        self.update()
+
     # ---- QPainter background + overlay ----
 
     def paintEvent(self, event) -> None:
@@ -90,7 +95,14 @@ class TagChipFrame(QFrame):
         painter.setPen(QPen(border, 1))
         painter.drawRoundedRect(rect, 12, 12)
 
-        # 2) Hover overlay + × (only when removable)
+        # 2) Selected highlight ring (theme color)
+        if self._selected:
+            hl = self.palette().highlight().color()
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(hl, 2.5))
+            painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+
+        # 3) Hover overlay + × (only when removable)
         if self._hovered and self._removable:
             # Semi-transparent overlay matching chip shape exactly
             painter.setBrush(QColor(0, 0, 0, 38))

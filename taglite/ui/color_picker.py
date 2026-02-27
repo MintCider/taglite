@@ -1,7 +1,7 @@
 """Tag color picker — a grid of preset swatches + custom color option."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QConicalGradient, QPainter, QPen
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QColorDialog, QPushButton, QWidget
 
 from taglite.ui.flow_layout import FlowLayout
@@ -23,25 +23,6 @@ PRESET_COLORS = [
 ]
 
 SWATCH_SIZE = 24
-
-
-def _rainbow_gradient(center: QPointF) -> QConicalGradient:
-    """Create a 12-color conical gradient for the selection ring."""
-    gradient = QConicalGradient(center, 0)
-    gradient.setColorAt(0.000, QColor("#ff0000"))
-    gradient.setColorAt(0.083, QColor("#ff8800"))
-    gradient.setColorAt(0.167, QColor("#ffff00"))
-    gradient.setColorAt(0.250, QColor("#88ff00"))
-    gradient.setColorAt(0.333, QColor("#00ff00"))
-    gradient.setColorAt(0.417, QColor("#00ff88"))
-    gradient.setColorAt(0.500, QColor("#00ffff"))
-    gradient.setColorAt(0.583, QColor("#0088ff"))
-    gradient.setColorAt(0.667, QColor("#0000ff"))
-    gradient.setColorAt(0.750, QColor("#8800ff"))
-    gradient.setColorAt(0.833, QColor("#ff00ff"))
-    gradient.setColorAt(0.917, QColor("#ff0088"))
-    gradient.setColorAt(1.000, QColor("#ff0000"))
-    return gradient
 
 
 class _SwatchButton(QPushButton):
@@ -66,8 +47,8 @@ class _SwatchButton(QPushButton):
         rect = QRectF(self.rect())
 
         if self._selected:
-            gradient = _rainbow_gradient(QPointF(rect.center()))
-            painter.setPen(QPen(QBrush(gradient), 2.5))
+            hl = self.palette().highlight().color()
+            painter.setPen(QPen(hl, 2.5))
             painter.setBrush(QBrush(QColor(self._color)))
             painter.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 4, 4)
         else:
@@ -79,7 +60,7 @@ class _SwatchButton(QPushButton):
 
 
 class _CustomSwatchButton(QPushButton):
-    """Custom color button: shows '...' when empty, filled + rainbow ring when a color is set."""
+    """Custom color button: shows '...' when empty, filled + highlight ring when a color is set."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -91,13 +72,11 @@ class _CustomSwatchButton(QPushButton):
         self.setStyleSheet("QPushButton { background: transparent; border: none; }")
 
     def set_color(self, hex_color: str) -> None:
-        """Set the custom color and mark as selected (with rainbow ring)."""
         self._color = hex_color
         self._selected = True
         self.update()
 
     def clear_color(self) -> None:
-        """Reset to default '...' state."""
         self._color = None
         self._selected = False
         self.update()
@@ -108,9 +87,8 @@ class _CustomSwatchButton(QPushButton):
         rect = QRectF(self.rect())
 
         if self._color and self._selected:
-            # Filled with color + rainbow ring (same as _SwatchButton selected)
-            gradient = _rainbow_gradient(QPointF(rect.center()))
-            painter.setPen(QPen(QBrush(gradient), 2.5))
+            hl = self.palette().highlight().color()
+            painter.setPen(QPen(hl, 2.5))
             painter.setBrush(QBrush(QColor(self._color)))
             painter.drawRoundedRect(rect.adjusted(1.5, 1.5, -1.5, -1.5), 4, 4)
         else:

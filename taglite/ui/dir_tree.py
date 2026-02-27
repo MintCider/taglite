@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from taglite.core.library import get_files_in_directory, get_library, list_libraries
 from taglite.db.models import File
+from taglite.utils.sort_key import pinyin_sort_key
 
 ICON_PROVIDER = QFileIconProvider()
 
@@ -148,7 +149,7 @@ class DirTree(QWidget):
         """Recursively add subdirectories to the tree."""
         children = get_files_in_directory(db_uri, library_id, parent_rel)
         dirs = sorted(
-            [f for f in children if f.is_directory], key=lambda f: f.filename.lower()
+            [f for f in children if f.is_directory], key=lambda f: pinyin_sort_key(f.filename)
         )
         for d in dirs:
             item = QStandardItem(
@@ -168,3 +169,34 @@ class DirTree(QWidget):
         rel_path = item.data(ROLE_REL_PATH)
         if lib_id is not None:
             self.directory_selected.emit(lib_id, rel_path or "")
+
+    def select_path(self, library_id: int, rel_path: str) -> None:
+        """Programmatically select a tree node matching (library_id, rel_path).
+
+        Uses setCurrentIndex (does not trigger clicked signal, avoids circular loops).
+        Expands ancestor nodes so the target is visible.
+        """
+        root = self._model.invisibleRootItem()
+        item = self._find_item(root, library_id, rel_path)
+        if item:
+            idx = self._model.indexFromItem(item)
+            self._tree.setCurrentIndex(idx)
+            parent = item.parent()
+            while parent:
+                self._tree.expand(self._model.indexFromItem(parent))
+                parent = parent.parent()
+
+    def _find_item(
+        self, parent_item: QStandardItem, library_id: int, rel_path: str
+    ) -> QStandardItem | None:
+        for i in range(parent_item.rowCount()):
+            child = parent_item.child(i)
+            if (
+                child.data(ROLE_LIBRARY_ID) == library_id
+                and (child.data(ROLE_REL_PATH) or "") == rel_path
+            ):
+                return child
+            result = self._find_item(child, library_id, rel_path)
+            if result:
+                return result
+        return None

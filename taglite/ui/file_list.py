@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 from taglite.core.library import get_files_in_directory, get_library
 from taglite.core.tagger import get_tags_for_files
 from taglite.db.models import File, Tag
+from taglite.utils.sort_key import pinyin_sort_key
 
 ICON_PROVIDER = QFileIconProvider()
 
@@ -118,7 +119,7 @@ class FileTableModel(QAbstractTableModel):
         if role == SORT_ROLE:
             dir_flag = 0 if f.is_directory else 1
             if col == 0:
-                return (dir_flag, f.filename.lower())
+                return (dir_flag, pinyin_sort_key(f.filename))
             if col == 1:
                 return (dir_flag, f.file_size or 0)
             if col == 2:
@@ -236,6 +237,7 @@ class FileList(QWidget):
     file_selected = Signal(int)
     tags_changed = Signal()
     file_opened = Signal(str)
+    directory_entered = Signal(int, str)  # (library_id, rel_path)
 
     def __init__(self, db_uri: str, parent=None) -> None:
         super().__init__(parent)
@@ -324,6 +326,7 @@ class FileList(QWidget):
         if not f:
             return
         if f.is_directory:
+            self.directory_entered.emit(f.library_id, f.relative_path)
             return
         lib = get_library(self._db_uri, f.library_id)
         if lib:

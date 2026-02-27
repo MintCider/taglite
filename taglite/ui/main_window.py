@@ -21,6 +21,7 @@ from taglite.ui.file_list import FileList
 from taglite.ui.library_manager import LibraryManagerDialog
 from taglite.ui.metadata_panel import MetadataPanel
 from taglite.ui.scan_worker import ScanWorker
+from taglite.ui.tag_browser import TagBrowser
 
 
 class MainWindow(QMainWindow):
@@ -44,6 +45,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._open_library_manager)
         else:
             self._dir_tree.reload(self._db_uri)
+            self._tag_browser.reload(self._db_uri)
 
     # ---- Toolbar ----
     def _setup_toolbar(self) -> None:
@@ -87,11 +89,19 @@ class MainWindow(QMainWindow):
     # ---- Three-column layout ----
     def _setup_panels(self) -> None:
         self._dir_tree = DirTree()
+        self._tag_browser = TagBrowser(self._db_uri)
         self._file_list = FileList(self._db_uri)
         self._meta_panel = MetadataPanel(self._db_uri)
 
+        # Left panel: vertical splitter with DirTree on top, TagBrowser on bottom
+        left_splitter = QSplitter(Qt.Vertical)
+        left_splitter.addWidget(self._dir_tree)
+        left_splitter.addWidget(self._tag_browser)
+        left_splitter.setSizes([400, 200])
+        left_splitter.setHandleWidth(1)
+
         splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self._dir_tree)
+        splitter.addWidget(left_splitter)
         splitter.addWidget(self._file_list)
         splitter.addWidget(self._meta_panel)
         splitter.setSizes([200, 580, 300])
@@ -118,20 +128,35 @@ class MainWindow(QMainWindow):
         self._file_list.file_selected.connect(self._meta_panel.show_file)
         self._file_list.tags_changed.connect(self._on_tags_changed)
         self._file_list.file_opened.connect(self._on_file_opened)
+        self._file_list.directory_entered.connect(self._on_directory_entered)
         self._meta_panel.tags_changed.connect(self._on_tags_changed_from_panel)
+        self._tag_browser.tag_deleted.connect(self._on_tag_deleted)
         self._search_bar.textChanged.connect(self._file_list.set_filter)
 
     def _on_directory_selected(self, library_id: int, rel_path: str) -> None:
         self._file_list.show_directory(library_id, rel_path)
         self._meta_panel.clear()
 
+    def _on_directory_entered(self, library_id: int, rel_path: str) -> None:
+        """User double-clicked a folder in the file list. Navigate into it."""
+        self._file_list.show_directory(library_id, rel_path)
+        self._dir_tree.select_path(library_id, rel_path)
+        self._meta_panel.clear()
+
     def _on_tags_changed(self) -> None:
-        """Tags changed in file list (via context menu) — refresh metadata panel."""
+        """Tags changed in file list (via context menu) — refresh metadata panel + tag browser."""
         self._meta_panel.refresh()
+        self._tag_browser.reload()
 
     def _on_tags_changed_from_panel(self) -> None:
-        """Tags changed in metadata panel — refresh file list."""
+        """Tags changed in metadata panel — refresh file list + tag browser."""
         self._file_list.refresh()
+        self._tag_browser.reload()
+
+    def _on_tag_deleted(self, tag_id: int) -> None:
+        """A tag was deleted from the tag browser."""
+        self._file_list.refresh()
+        self._meta_panel.refresh()
 
     def _on_file_opened(self, filename: str) -> None:
         """Show status bar message when a file is opened (#5)."""
@@ -154,6 +179,7 @@ class MainWindow(QMainWindow):
 
         if dlg.added_lib_ids or dlg.removed_lib_ids or dlg.needs_full_reload:
             self._update_status()
+            self._tag_browser.reload()
 
     # ---- Rescan ----
     def _rescan_all(self) -> None:
@@ -171,4 +197,5 @@ class MainWindow(QMainWindow):
         self._act_scan.setEnabled(True)
         self._dir_tree.reload(self._db_uri)
         self._file_list.refresh()
+        self._tag_browser.reload()
         self._update_status("扫描完成")

@@ -145,3 +145,57 @@ def get_tags_for_files(db_uri: str, file_ids: list[int]) -> dict[int, list[Tag]]
     for file_id, tag in rows:
         result[file_id].append(tag)
     return result
+
+
+def list_all_tags(db_uri: str) -> list[Tag]:
+    """List all tags across all libraries in the current backend."""
+    with session_scope(db_uri) as session:
+        return list(session.scalars(select(Tag).order_by(Tag.library_id, Tag.value)))
+
+
+def get_files_under_path(
+    db_uri: str, library_id: int, dir_relative_path: str
+) -> list[File]:
+    """Get ALL files and subdirectories under a directory path (recursive).
+
+    Uses path prefix matching. Includes the directory itself.
+    """
+    with session_scope(db_uri) as session:
+        all_files = list(
+            session.scalars(
+                select(File).where(
+                    File.library_id == library_id,
+                    File.is_missing == False,  # noqa: E712
+                )
+            )
+        )
+    prefix = dir_relative_path.rstrip("/\\")
+    results = []
+    for f in all_files:
+        if f.relative_path == prefix:
+            results.append(f)
+        elif f.relative_path.startswith(prefix + "/") or f.relative_path.startswith(
+            prefix + "\\"
+        ):
+            results.append(f)
+    return results
+
+
+def tag_files_recursive(
+    db_uri: str, library_id: int, dir_relative_path: str, tag_id: int
+) -> int:
+    """Tag a directory and all its contents. Returns count of files tagged."""
+    files = get_files_under_path(db_uri, library_id, dir_relative_path)
+    for f in files:
+        tag_file(db_uri, f.id, tag_id)
+    return len(files)
+
+
+def untag_files_recursive(
+    db_uri: str, library_id: int, dir_relative_path: str, tag_id: int
+) -> int:
+    """Remove a tag from a directory and all its contents. Returns count."""
+    files = get_files_under_path(db_uri, library_id, dir_relative_path)
+    for f in files:
+        untag_file(db_uri, f.id, tag_id)
+    return len(files)
