@@ -50,17 +50,33 @@ Library 信息（name, root_path）全部存在 DB 的 libraries 表里，不在
 - 一个文件可以有多个标签
 - 一个标签可以关联多个文件
 
-### 2.3 标签组合搜索（核心功能）
-- 支持 AND：同时拥有标签 A 和标签 B 的文件
-- 支持 OR：拥有标签 A 或标签 B 的文件
-- 支持 NOT：排除拥有某标签的文件
-- 搜索结果显示文件列表 + 文件的绝对路径（非相对路径）
+### 2.3 搜索引擎
+
+搜索栏支持完整的搜索语法，空格分隔默认 AND，支持 OR / NOT / 括号组合。
+
+| 语法 | 含义 | 示例 |
+|------|------|------|
+| 纯文本 | 文件名模糊匹配 | `报告` |
+| `tag:value` | 简单标签匹配 | `tag:重要` |
+| `tag:key=value` | KV 标签精确匹配 | `tag:project=Alpha` |
+| `tag:key` | 匹配该 key 的所有值 | `tag:status` |
+| `ext:xxx` | 扩展名过滤 | `ext:pdf` |
+| `ext:folder` / `-ext:folder` | 只显示/排除文件夹 | |
+| `size>N` / `size<N` | 大小过滤（支持 KB/MB/GB） | `size>1MB` |
+| `after:date` / `before:date` | 修改时间过滤 | `after:2024-01-01` |
+| `AND` / `OR` / `NOT` / `-` / `()` | 逻辑运算 | `(tag:A OR tag:B) AND ext:pdf` |
+
+搜索结果以平铺列表展示，每条文件下方显示完整相对路径（浅色小字，横贯所有列宽）。搜索结果缓存最近 3 次查询（LRU），数据变更时自动清空。
+
+解析失败处理：纯文本回退为文件名搜索；含前缀时严格解析，语法错误在状态栏提示。
 
 ### 2.4 文件浏览 GUI
 - 三栏布局：
-  - 左栏：目录树（Library 内的文件夹结构）
-  - 中栏：文件列表（当前目录下的文件，含标签列）
+  - 左栏上：目录树（Library 内的文件夹结构）
+  - 左栏下：标签浏览器（点击标签联动搜索）
+  - 中栏：文件列表（名称/修改时间/大小/类型/标签芯片列，列头可拖拽调整）
   - 右栏：元数据面板（选中文件的详细信息 + 标签编辑）
+- 工具栏搜索框 + 高级搜索展开面板（标签选择/扩展名/大小/日期筛选）
 - 双击文件：调用系统默认程序打开
 - 空格键：GUI 内快速预览
 - 右键菜单：快速打标签
@@ -111,6 +127,8 @@ files
 ├── filename (TEXT NOT NULL)        -- 文件名/目录名
 ├── file_size (INTEGER nullable)    -- 字节数（目录为 NULL）
 ├── file_extension (TEXT nullable)  -- 小写扩展名含点（目录为 NULL）
+├── file_mtime (DATETIME nullable)  -- 文件修改时间（UTC）
+├── file_ctime (DATETIME nullable)  -- 文件创建时间（UTC）
 ├── content_hash (TEXT nullable)    -- 预留，Phase 1 不填
 ├── is_directory (BOOLEAN default False) -- 是否为目录
 ├── last_seen (DATETIME)            -- 最后扫描确认时间
@@ -151,19 +169,20 @@ taglite/
 │   │   ├── __init__.py
 │   │   ├── library.py       -- Library 创建、目录扫描、文件索引、active 切换、路径变更
 │   │   ├── tagger.py        -- 标签 CRUD 业务逻辑
-│   │   └── search.py        -- 组合搜索引擎
+│   │   └── search.py        -- 搜索引擎：AST 解析器 + 多条件执行
 │   ├── ui/
 │   │   ├── app.py           -- QApplication 初始化、QSS 加载
-│   │   ├── main_window.py   -- 主窗口（三栏布局）
+│   │   ├── main_window.py   -- 主窗口（三栏布局 + 搜索流程 + 高级面板）
 │   │   ├── dir_tree.py      -- 左栏：目录树（自定义 drawBranches）
-│   │   ├── file_list.py     -- 中栏：文件列表（含标签列、FileSortProxy）
+│   │   ├── file_list.py     -- 中栏：文件列表（FileTableView 搜索结果路径叠层）
 │   │   ├── metadata_panel.py-- 右栏：元数据 + 标签编辑
 │   │   ├── tag_chip.py      -- TagChipFrame（QPainter 绘制）+ AddTagButton
 │   │   ├── tag_dialog.py    -- 快速打标签对话框（含自动配色）
+│   │   ├── tag_browser.py   -- 标签浏览面板（点击联动搜索）
+│   │   ├── search_panel.py  -- 高级搜索面板（标签/扩展名/大小/日期筛选）
 │   │   ├── color_picker.py  -- 标签颜色选择器（彩虹渐变环）
 │   │   ├── flow_layout.py   -- FlowLayout（标签芯片自动换行布局）
 │   │   ├── scan_worker.py   -- 后台扫描线程
-│   │   ├── search_bar.py    -- 搜索栏（标签组合筛选 UI）
 │   │   └── library_manager.py -- Library 管理界面（增量跟踪、active 切换、路径变更）
 │   └── integration/
 │       ├── shell_menu.py    -- Windows 右键菜单注册/注销
@@ -225,10 +244,15 @@ taglite/
 - [x] 首次启动延迟弹出 Library 管理器（QTimer.singleShot）
 - [x] 目录树 drawBranches 自定义绘制，叶节点 branch 区域完全透明无交互
 
-### Phase 3：搜索与筛选
-- [ ] 标签组合查询引擎（AND/OR/NOT）
-- [ ] 搜索 UI（搜索栏 + 标签选择器）
-- [ ] 搜索结果展示（绝对路径）
+### Phase 3：搜索、筛选与时间字段
+- [x] File 表增加 file_mtime / file_ctime，扫描时采集时间戳
+- [x] 文件列表增加"修改时间"列（5 列：名称/修改时间/大小/类型/标签）
+- [x] 搜索引擎（search.py）：递归下降 AST 解析器，支持 AND/OR/NOT/括号
+- [x] 搜索语法：tag: / ext: / size> / size< / after: / before: / 纯文件名
+- [x] 搜索结果模式：FileTableView 视口叠层绘制全宽路径、LRU 缓存 3 条
+- [x] 标签浏览器点击联动搜索栏（tag_selected / tag_deselected）
+- [x] 高级搜索面板（标签芯片选择、扩展名、大小范围、日期范围）
+- [x] 列头竖线分隔 + splitter handle 可见
 
 ### Phase 4：集成与打包
 - [ ] Windows 资源管理器右键菜单注册

@@ -73,6 +73,8 @@ class File(Base):
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
     )
+    file_mtime: Mapped[datetime | None] = mapped_column(nullable=True)
+    file_ctime: Mapped[datetime | None] = mapped_column(nullable=True)
     is_directory: Mapped[bool] = mapped_column(default=False)
     is_missing: Mapped[bool] = mapped_column(default=False)
 

@@ -134,6 +134,7 @@ class MetadataPanel(QWidget):
             file_ext = f.file_extension
             is_dir = f.is_directory
             lib_id = f.library_id
+            file_mtime = f.file_mtime
 
         self._current_is_directory = is_dir
         self._current_library_id = lib_id
@@ -166,6 +167,7 @@ class MetadataPanel(QWidget):
 
         details = [
             ("位置", parent_dir),
+            ("修改时间", file_mtime.strftime("%Y-%m-%d %H:%M:%S") if file_mtime else "未知"),
             ("大小", _format_size(file_size) if not is_dir else "文件夹"),
             ("类型", "文件夹" if is_dir else (file_ext or "未知").lstrip(".").upper()),
         ]

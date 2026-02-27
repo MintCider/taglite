@@ -27,19 +27,22 @@ class TagBrowser(QWidget):
     """Panel listing all tags. Click to highlight; right-click to delete."""
 
     tag_deleted = Signal(int)  # tag_id
+    tag_selected = Signal(str)  # search text, e.g. "tag:重要" or "tag:key=value"
+    tag_deselected = Signal()
 
     def __init__(self, db_uri: str, parent=None) -> None:
         super().__init__(parent)
         self._db_uri = db_uri
         self._selected_tag_id: int | None = None
         self._chips: dict[int, TagChipFrame] = {}
+        self._tag_search_text: dict[int, str] = {}  # tag_id → "tag:xxx" search text
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         header = QLabel("  标签")
-        header.setObjectName("sectionTitle")
+        header.setStyleSheet("font-size: 13px; font-weight: 700; padding: 4px 0px;")
         header.setFixedHeight(28)
         layout.addWidget(header)
 
@@ -66,6 +69,7 @@ class TagBrowser(QWidget):
             if item and item.widget():
                 item.widget().deleteLater()
         self._chips.clear()
+        self._tag_search_text.clear()
 
         for tag in tags:
             chip = TagChipFrame(
@@ -79,6 +83,11 @@ class TagBrowser(QWidget):
             chip.edit_requested.connect(lambda tid=tag.id: self._on_context_menu(tid))
             self._flow.addWidget(chip)
             self._chips[tag.id] = chip
+            # Build search text
+            if tag.key:
+                self._tag_search_text[tag.id] = f"tag:{tag.key}={tag.value}"
+            else:
+                self._tag_search_text[tag.id] = f"tag:{tag.value}"
 
         # Restore selection visual if tag still exists
         if self._selected_tag_id in self._chips:
@@ -97,6 +106,7 @@ class TagBrowser(QWidget):
             # Deselect
             self._chips[tag_id].set_selected(False)
             self._selected_tag_id = None
+            self.tag_deselected.emit()
         else:
             # Deselect previous
             if self._selected_tag_id in self._chips:
@@ -105,6 +115,9 @@ class TagBrowser(QWidget):
             self._selected_tag_id = tag_id
             if tag_id in self._chips:
                 self._chips[tag_id].set_selected(True)
+            search_text = self._tag_search_text.get(tag_id, "")
+            if search_text:
+                self.tag_selected.emit(search_text)
 
     def _on_context_menu(self, tag_id: int) -> None:
         menu = QMenu(self)

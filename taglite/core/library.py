@@ -96,10 +96,14 @@ def scan_library(db_uri: str, library_id: int, root_path: str) -> ScanResult:
         for rel, (stat, is_dir) in disk_files.items():
             ext = Path(rel).suffix.lower() or None
             fname = Path(rel).name
+            mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+            ctime = datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc)
             if rel in existing:
                 f = existing[rel]
                 f.last_seen = now
                 f.file_size = None if is_dir else stat.st_size
+                f.file_mtime = mtime
+                f.file_ctime = ctime
                 f.is_missing = False
                 result.updated += 1
             else:
@@ -109,6 +113,8 @@ def scan_library(db_uri: str, library_id: int, root_path: str) -> ScanResult:
                     filename=fname,
                     file_size=None if is_dir else stat.st_size,
                     file_extension=None if is_dir else ext,
+                    file_mtime=mtime,
+                    file_ctime=ctime,
                     is_directory=is_dir,
                     last_seen=now,
                     is_missing=False,

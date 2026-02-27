@@ -63,6 +63,7 @@ QTableView::item {
 QHeaderView::section {
     background: palette(window);
     border: none;
+    border-right: 1px solid rgba(128,128,128,0.18);
     border-bottom: 1px solid rgba(128,128,128,0.15);
     padding: 6px 10px;
     font-weight: 600;
@@ -107,8 +108,15 @@ QStatusBar {
     border-top: 1px solid rgba(128,128,128,0.12);
 }
 
-/* Splitter handle */
-QSplitter::handle { background: rgba(128,128,128,0.12); }
+/* Splitter handle — subtle divider line */
+QSplitter::handle:horizontal {
+    width: 1px;
+    background: rgba(128,128,128,0.35);
+}
+QSplitter::handle:vertical {
+    height: 1px;
+    background: rgba(128,128,128,0.35);
+}
 
 /* Dialogs */
 QDialog { background: palette(window); }

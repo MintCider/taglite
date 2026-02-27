@@ -1,13 +1,13 @@
 """Reusable tag chip widget with QPainter-drawn rounded background.
 
 Uses QPainter + Antialiasing for smooth rounded corners (no QSS bezier artifacts).
-Hover overlay and × are painted in paintEvent (no QPushButton overlay), ensuring
-perfect alignment with the chip's rounded shape.
+Everything (background, text, hover overlay, ×) is painted in paintEvent for correct
+z-order — no child QLabel that could render on top of the overlay.
 """
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtWidgets import QFrame, QWidget
 
 
 def _parse_color(hex_color: str | None) -> QColor:
@@ -17,7 +17,7 @@ def _parse_color(hex_color: str | None) -> QColor:
 
 
 class TagChipFrame(QFrame):
-    """A tag chip with QPainter-drawn rounded background.
+    """A tag chip with QPainter-drawn background, text, and overlay.
 
     Signals:
         clicked()          — left-click on the chip (only if clickable=True)
@@ -42,31 +42,18 @@ class TagChipFrame(QFrame):
     ) -> None:
         super().__init__(parent)
         self.tag_id = tag_id
+        self._text = text
         self._color = _parse_color(color)
+        self._color_hex = color
         self._dimmed = dimmed
         self._clickable = clickable
         self._removable = removable
         self._hovered = False
         self._selected = False
 
-        # Transparent background — we paint it ourselves
+        # Transparent background — we paint everything ourselves
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent; border: none;")
-
-        # Layout: only the label (centered)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 3, 8, 3)
-        lay.setSpacing(0)
-
-        if dimmed:
-            label_style = "color: rgba(128,128,128,0.5); font-size: 12px; background: transparent;"
-        else:
-            label_style = f"color: {color or '#0078d4'}; font-size: 12px; background: transparent;"
-
-        self._label = QLabel(text)
-        self._label.setStyleSheet(label_style)
-        self._label.setAlignment(Qt.AlignVCenter)
-        lay.addWidget(self._label, alignment=Qt.AlignCenter)
 
         if clickable or removable:
             self.setCursor(Qt.PointingHandCursor)
@@ -75,21 +62,32 @@ class TagChipFrame(QFrame):
         self._selected = selected
         self.update()
 
-    # ---- QPainter background + overlay ----
+    def sizeHint(self) -> QSize:
+        fm = QFontMetrics(self.font())
+        w = fm.horizontalAdvance(self._text) + 18  # 9px padding each side
+        h = fm.height() + 8
+        return QSize(max(w, 24), max(h, 22))
+
+    def minimumSizeHint(self) -> QSize:
+        return self.sizeHint()
+
+    # ---- QPainter — all rendering ----
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
 
-        # 1) Draw chip background
+        # 1) Chip background
         if self._dimmed:
             bg = QColor(128, 128, 128, 20)
             border = QColor(128, 128, 128, 51)
+            text_color = QColor(128, 128, 128, 128)
         else:
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
             bg = QColor(r, g, b, 25)
             border = QColor(r, g, b, 76)
+            text_color = QColor(self._color_hex or "#0078d4")
 
         painter.setBrush(QBrush(bg))
         painter.setPen(QPen(border, 1))
@@ -123,6 +121,13 @@ class TagChipFrame(QFrame):
                 QPointF(cx + CROSS_ARM, cy - CROSS_ARM),
                 QPointF(cx - CROSS_ARM, cy + CROSS_ARM),
             )
+        else:
+            # 4) Draw text (only when not showing ×)
+            font = painter.font()
+            font.setPixelSize(12)
+            painter.setFont(font)
+            painter.setPen(text_color)
+            painter.drawText(rect, Qt.AlignCenter, self._text)
 
         painter.end()
 
@@ -152,16 +157,18 @@ class TagChipFrame(QFrame):
         super().leaveEvent(event)
 
 
-class AddTagButton(QPushButton):
+class AddTagButton(QWidget):
     """A '+ 添加标签' button with QPainter-drawn rounded background.
 
     Matches the visual style of TagChipFrame (no QSS border-radius artifacts).
     """
 
+    clicked = Signal()
+
     def __init__(self, text: str = "+ 添加标签", parent=None) -> None:
-        super().__init__(text, parent)
+        super().__init__(parent)
+        self._text = text
         self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet("background: transparent; border: none;")
         self._hovered = False
 
     def paintEvent(self, event) -> None:
@@ -187,16 +194,18 @@ class AddTagButton(QPushButton):
         font = painter.font()
         font.setPixelSize(12)
         painter.setFont(font)
-        painter.drawText(rect, Qt.AlignCenter, self.text())
+        painter.drawText(rect, Qt.AlignCenter, self._text)
         painter.end()
 
     def sizeHint(self):
-        from PySide6.QtGui import QFontMetrics
         fm = QFontMetrics(self.font())
-        w = fm.horizontalAdvance(self.text()) + 24
+        w = fm.horizontalAdvance(self._text) + 24
         h = fm.height() + 8
-        from PySide6.QtCore import QSize
         return QSize(w, h)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
 
     def enterEvent(self, event) -> None:
         self._hovered = True
