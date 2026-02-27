@@ -21,6 +21,7 @@ class Library(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     root_path: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
 
     tags: Mapped[list["Tag"]] = relationship(
         back_populates="library", cascade="all, delete-orphan"

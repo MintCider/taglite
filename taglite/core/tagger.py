@@ -129,3 +129,19 @@ def get_files_by_tag(db_uri: str, tag_id: int) -> list[File]:
                 .where(FileTag.tag_id == tag_id)
             )
         )
+
+
+def get_tags_for_files(db_uri: str, file_ids: list[int]) -> dict[int, list[Tag]]:
+    """Batch-fetch tags for multiple files. Returns {file_id: [Tag, ...]}."""
+    if not file_ids:
+        return {}
+    with session_scope(db_uri) as session:
+        rows = session.execute(
+            select(FileTag.file_id, Tag)
+            .join(Tag, FileTag.tag_id == Tag.id)
+            .where(FileTag.file_id.in_(file_ids))
+        ).all()
+    result: dict[int, list[Tag]] = {fid: [] for fid in file_ids}
+    for file_id, tag in rows:
+        result[file_id].append(tag)
+    return result

@@ -93,7 +93,8 @@ Library 信息（name, root_path）全部存在 DB 的 libraries 表里，不在
 libraries
 ├── id (PK, autoincrement)
 ├── name (TEXT NOT NULL UNIQUE)     -- Library 名称，UTF-8
-└── root_path (TEXT NOT NULL)       -- 本机上的实际路径
+├── root_path (TEXT NOT NULL)       -- 本机上的实际路径
+└── is_active (BOOLEAN default True) -- 是否在目录树中显示
 
 tags
 ├── id (PK, autoincrement)
@@ -148,17 +149,22 @@ taglite/
 │   │   └── engine.py        -- 数据库引擎/会话管理（按 URI 缓存）
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── library.py       -- Library 创建、目录扫描、文件索引
+│   │   ├── library.py       -- Library 创建、目录扫描、文件索引、active 切换、路径变更
 │   │   ├── tagger.py        -- 标签 CRUD 业务逻辑
 │   │   └── search.py        -- 组合搜索引擎
 │   ├── ui/
+│   │   ├── app.py           -- QApplication 初始化、QSS 加载
 │   │   ├── main_window.py   -- 主窗口（三栏布局）
-│   │   ├── dir_tree.py      -- 左栏：目录树
-│   │   ├── file_list.py     -- 中栏：文件列表
+│   │   ├── dir_tree.py      -- 左栏：目录树（自定义 drawBranches）
+│   │   ├── file_list.py     -- 中栏：文件列表（含标签列、FileSortProxy）
 │   │   ├── metadata_panel.py-- 右栏：元数据 + 标签编辑
+│   │   ├── tag_chip.py      -- TagChipFrame（QPainter 绘制）+ AddTagButton
+│   │   ├── tag_dialog.py    -- 快速打标签对话框（含自动配色）
+│   │   ├── color_picker.py  -- 标签颜色选择器（彩虹渐变环）
+│   │   ├── flow_layout.py   -- FlowLayout（标签芯片自动换行布局）
+│   │   ├── scan_worker.py   -- 后台扫描线程
 │   │   ├── search_bar.py    -- 搜索栏（标签组合筛选 UI）
-│   │   ├── tag_dialog.py    -- 快速打标签对话框
-│   │   └── library_manager.py -- Library 管理界面
+│   │   └── library_manager.py -- Library 管理界面（增量跟踪、active 切换、路径变更）
 │   └── integration/
 │       ├── shell_menu.py    -- Windows 右键菜单注册/注销
 │       └── file_opener.py   -- 双击打开 / 空格预览
@@ -201,12 +207,23 @@ taglite/
 - [x] 文件和目录打标签
 
 ### Phase 2：GUI 主体
-- [ ] PySide6 主窗口三栏布局
-- [ ] 左栏目录树
-- [ ] 中栏文件列表（含标签列显示）
-- [ ] 右栏元数据面板 + 标签编辑
-- [ ] 双击打开文件
-- [ ] 右键菜单打标签
+- [x] PySide6 主窗口三栏布局
+- [x] 左栏目录树（自定义 branch 绘制，叶节点无箭头无交互）
+- [x] 中栏文件列表（含标签芯片列显示、复合排序、可拖拽列宽）
+- [x] 右栏元数据面板 + 标签编辑（芯片 hover 删除、右键重命名/换色）
+- [x] 双击打开文件
+- [x] 右键菜单打标签
+
+### Phase 2.5：GUI 修复与增强
+- [x] Library.is_active 字段 — 目录树中隐藏/显示 Library
+- [x] Library 管理器增量跟踪（添加/移除/active 切换/路径变更）
+- [x] TagChipFrame 全 QPainter 绘制（避免 QSS border-radius 锯齿）
+- [x] 标签 hover overlay + 红色叉号删除（QPainter drawLine）
+- [x] 标签自动配色 + 颜色选择器彩虹渐变环
+- [x] FlowLayout 标签自动换行
+- [x] FileSortProxy 修复 PySide6 QVariant 元组比较问题
+- [x] 首次启动延迟弹出 Library 管理器（QTimer.singleShot）
+- [x] 目录树 drawBranches 自定义绘制，叶节点 branch 区域完全透明无交互
 
 ### Phase 3：搜索与筛选
 - [ ] 标签组合查询引擎（AND/OR/NOT）
@@ -224,3 +241,57 @@ taglite/
 - [ ] 标签导入/导出
 - [ ] 多数据库后端配置 UI
 - [ ] Library 间标签同步
+
+## 5. Multi-Computer 设计方案（未来 Phase）
+
+### 5.1 背景
+
+当用户在多台电脑上使用 TagLite（通过 OneDrive 同步数据库），同一个 Library 在不同设备上的根目录路径可能不同（如 `D:\Projects` vs `C:\Users\bob\Projects`）。需要一种机制让每台设备自动解析到正确的本地路径。
+
+### 5.2 machine_id
+
+`config.json` 增加 `machine_id` 字段，首次运行时自动生成 UUID：
+
+```json
+{
+  "machine_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "default_backend_id": 1,
+  "backends": [...]
+}
+```
+
+### 5.3 library_mounts 表
+
+新增数据库表，存储每台设备对每个 Library 的挂载路径：
+
+```
+library_mounts
+├── library_id (FK → libraries.id)   -- 复合主键
+├── machine_id (TEXT NOT NULL)        -- 复合主键
+├── root_path (TEXT NOT NULL)         -- 该设备上的实际路径
+└── PK(library_id, machine_id)
+```
+
+### 5.4 路径解析逻辑
+
+```python
+def resolve_library_path(db_uri: str, library_id: int, machine_id: str) -> str:
+    """解析当前设备上 Library 的实际路径。
+
+    优先级：
+    1. library_mounts 中匹配 (library_id, machine_id) 的记录
+    2. 回退到 Library.root_path（创建时的默认值）
+    """
+```
+
+### 5.5 工作流程
+
+1. 用户在设备 A 创建 Library，root_path 记录为设备 A 的路径
+2. 自动在 library_mounts 中插入 `(library_id, machine_id_A, root_path_A)`
+3. 设备 B 首次打开同一数据库，发现 Library 在 library_mounts 中无当前 machine_id 记录
+4. 弹窗提示用户选择本地路径，写入 `(library_id, machine_id_B, root_path_B)`
+5. 后续启动自动通过 machine_id 解析到正确路径
+
+### 5.6 多数据库快速浏览 UI（Phase 3.3）
+
+工具栏添加 Backend 切换下拉框，可快速在不同数据库之间切换查看。目前跨 Backend 搜索不做。

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from taglite.db.engine import init_db, session_scope
 from taglite.db.models import File, Library
@@ -19,8 +20,8 @@ class ScanResult:
     skipped_dirs: list[str] = field(default_factory=list)
 
 
-def create_library(db_uri: str, name: str, root_path: str) -> Library:
-    """Create a library record and run initial scan."""
+def create_library_record(db_uri: str, name: str, root_path: str) -> Library:
+    """Create a library DB record only (no scan). Returns the Library object."""
     init_db(db_uri)
     root = str(Path(root_path).resolve())
     with session_scope(db_uri) as session:
@@ -28,11 +29,16 @@ def create_library(db_uri: str, name: str, root_path: str) -> Library:
         session.add(lib)
         session.flush()
         lib_id = lib.id
-
-    scan_library(db_uri, lib_id, root)
-
     with session_scope(db_uri) as session:
         return session.get(Library, lib_id)
+
+
+def create_library(db_uri: str, name: str, root_path: str) -> Library:
+    """Create a library record and run initial scan."""
+    lib = create_library_record(db_uri, name, root_path)
+    scan_library(db_uri, lib.id, lib.root_path)
+    with session_scope(db_uri) as session:
+        return session.get(Library, lib.id)
 
 
 def _is_hidden(name: str) -> bool:
@@ -49,6 +55,9 @@ def scan_library(db_uri: str, library_id: int, root_path: str) -> ScanResult:
     result = ScanResult()
     now = datetime.now(timezone.utc)
     root = Path(root_path)
+
+    if not root.exists():
+        return ScanResult(skipped_dirs=[str(root)])
 
     # Collect all relative paths on disk
     disk_files: dict[str, tuple[os.stat_result, bool]] = {}  # rel -> (stat, is_dir)
@@ -114,3 +123,77 @@ def scan_library(db_uri: str, library_id: int, root_path: str) -> ScanResult:
                 result.missing += 1
 
     return result
+
+
+def list_libraries(db_uri: str, *, active_only: bool = True) -> list[Library]:
+    """Return libraries in the database. By default only active ones."""
+    with session_scope(db_uri) as session:
+        stmt = select(Library)
+        if active_only:
+            stmt = stmt.where(Library.is_active == True)  # noqa: E712
+        return list(session.scalars(stmt))
+
+
+def get_library(db_uri: str, library_id: int) -> Library | None:
+    """Get a single library by ID."""
+    with session_scope(db_uri) as session:
+        return session.get(Library, library_id)
+
+
+def delete_library(db_uri: str, library_id: int) -> None:
+    """Delete a library and all its files/tags (cascade)."""
+    with session_scope(db_uri) as session:
+        lib = session.get(Library, library_id)
+        if lib:
+            session.delete(lib)
+
+
+def set_library_active(db_uri: str, library_id: int, active: bool) -> None:
+    """Toggle a library's is_active flag."""
+    with session_scope(db_uri) as session:
+        lib = session.get(Library, library_id)
+        if lib:
+            lib.is_active = active
+
+
+def update_library_path(db_uri: str, library_id: int, new_root_path: str) -> None:
+    """Update a library's root_path."""
+    root = str(Path(new_root_path).resolve())
+    with session_scope(db_uri) as session:
+        lib = session.get(Library, library_id)
+        if lib:
+            lib.root_path = root
+
+
+def get_files_in_directory(
+    db_uri: str, library_id: int, dir_relative_path: str
+) -> list[File]:
+    """Get direct children (files + subdirs) of a directory.
+
+    dir_relative_path="" means library root.
+    """
+    with session_scope(db_uri) as session:
+        all_files = list(
+            session.scalars(
+                select(File).where(
+                    File.library_id == library_id,
+                    File.is_missing == False,  # noqa: E712
+                )
+            )
+        )
+    # Filter to direct children of dir_relative_path
+    prefix = dir_relative_path.rstrip("/\\")
+    results = []
+    for f in all_files:
+        rel = f.relative_path
+        if prefix:
+            # Must start with prefix + separator
+            if not rel.startswith(prefix + "/") and not rel.startswith(prefix + "\\"):
+                continue
+            remainder = rel[len(prefix) + 1 :]
+        else:
+            remainder = rel
+        # Direct child: no more separators
+        if "/" not in remainder and "\\" not in remainder:
+            results.append(f)
+    return results

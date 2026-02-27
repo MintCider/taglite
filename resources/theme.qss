@@ -1,0 +1,174 @@
+/* TagLite QSS — platform-native base with palette() for light/dark auto-adapt */
+
+/* Overall */
+QMainWindow { background-color: palette(window); }
+
+/* Toolbar */
+QToolBar {
+    spacing: 6px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(128,128,128,0.15);
+    background: palette(window);
+}
+QToolBar QToolButton {
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+QToolBar QToolButton:hover {
+    background-color: rgba(128,128,128,0.12);
+}
+QToolBar QToolButton:pressed {
+    background-color: rgba(128,128,128,0.22);
+}
+
+/* Search bar */
+#searchBar {
+    border: 1px solid rgba(128,128,128,0.25);
+    border-radius: 4px;
+    padding: 5px 8px;
+    background: palette(base);
+}
+#searchBar:focus {
+    border-color: palette(highlight);
+}
+
+/* Directory tree */
+QTreeView {
+    background: palette(window);
+    padding: 4px;
+    outline: 0;
+}
+QTreeView::item {
+    padding: 2px 4px;
+    border-radius: 3px;
+    margin: 0px 2px;
+}
+QTreeView::item:selected {
+    background-color: palette(highlight);
+    color: palette(highlighted-text);
+}
+QTreeView::item:hover:!selected {
+    background-color: rgba(128,128,128,0.08);
+}
+
+/* File list table */
+QTableView {
+    background: palette(base);
+    alternate-background-color: rgba(128,128,128,0.04);
+    selection-background-color: palette(highlight);
+}
+QTableView::item {
+    padding: 5px 10px;
+}
+QHeaderView::section {
+    background: palette(window);
+    border: none;
+    border-bottom: 1px solid rgba(128,128,128,0.15);
+    padding: 6px 10px;
+    font-weight: 600;
+    font-size: 12px;
+    color: palette(dark);
+}
+
+/* Right metadata panel */
+#metaPanel {
+    background: palette(window);
+    border-left: 1px solid rgba(128,128,128,0.15);
+}
+#panelTitle {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 0px 0px 10px 0px;
+}
+#separator {
+    color: rgba(128,128,128,0.2);
+    margin: 0px 0px 4px 0px;
+}
+#sectionTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: palette(windowText);
+    padding: 16px 0px 6px 0px;
+}
+#metaKey {
+    font-size: 11px;
+    color: palette(placeholderText);
+    padding: 8px 0px 1px 0px;
+}
+#metaValue {
+    font-size: 13px;
+    padding: 0px;
+}
+
+/* Status bar */
+QStatusBar {
+    font-size: 12px;
+    color: palette(placeholderText);
+    border-top: 1px solid rgba(128,128,128,0.12);
+}
+
+/* Splitter handle */
+QSplitter::handle { background: rgba(128,128,128,0.12); }
+
+/* Dialogs */
+QDialog { background: palette(window); }
+QGroupBox {
+    font-weight: 600;
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 16px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    padding: 0 6px;
+}
+
+/* List widgets */
+QListWidget {
+    background: palette(base);
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 4px;
+}
+QListWidget::item {
+    padding: 6px 8px;
+}
+QListWidget::item:selected {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+}
+
+/* Buttons */
+QPushButton {
+    padding: 5px 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(128,128,128,0.25);
+    background: palette(button);
+}
+QPushButton:hover {
+    background: rgba(128,128,128,0.1);
+}
+QPushButton:pressed {
+    background: rgba(128,128,128,0.18);
+}
+#primaryBtn {
+    background: palette(highlight);
+    color: palette(highlighted-text);
+    border: none;
+}
+#primaryBtn:hover {
+    background: palette(highlight);
+    opacity: 0.9;
+}
+
+/* Progress dialog */
+QProgressBar {
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 4px;
+    text-align: center;
+    height: 20px;
+}
+QProgressBar::chunk {
+    background: palette(highlight);
+    border-radius: 3px;
+}
